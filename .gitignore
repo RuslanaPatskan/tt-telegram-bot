@@ -1,0 +1,7 @@
+.env
+session/
+__pycache__/
+*.pyc
+*.session
+.auth_state.json
+tt-telegram-bot.zip
