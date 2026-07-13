@@ -121,8 +121,11 @@ async def candidates_from_applications(
 ):
     """Резолвить job-application IDs (kanban) у кандидатів."""
     verify_secret(x_secret)
-    candidates = await teamtailor.get_candidates_from_job_applications(body.candidate_ids)
-    return {"candidates": candidates}
+    try:
+        candidates = await teamtailor.get_candidates_from_job_applications(body.candidate_ids)
+        return {"candidates": candidates}
+    except Exception as e:
+        return {"candidates": [], "error": str(e)}
 
 
 @app.post("/api/candidates")
