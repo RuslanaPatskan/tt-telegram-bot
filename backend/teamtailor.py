@@ -101,6 +101,46 @@ async def get_candidates_from_job_applications(job_app_ids: list[str]) -> list[d
     return [r for r in results if r is not None]
 
 
+async def get_job_applications_for_stage(job_id: str, stage_id: str) -> list[dict]:
+    """Повертає всіх кандидатів для вказаного етапу вакансії."""
+    url = f"{TT_BASE_URL}/job-applications"
+    params = {
+        "filter[job-id]": job_id,
+        "filter[stage-id]": stage_id,
+        "include": "candidate",
+        "page[size]": 50,
+    }
+    candidates = []
+    page = 1
+    while True:
+        params["page[number]"] = page
+        async with httpx.AsyncClient(timeout=15) as client:
+            r = await client.get(url, headers=_headers(), params=params)
+        if r.status_code != 200:
+            break
+        body = r.json()
+        included = {f"{i['type']}/{i['id']}": i for i in body.get("included", [])}
+        for app in body.get("data", []):
+            try:
+                cid = app["relationships"]["candidate"]["data"]["id"]
+                key = f"candidates/{cid}"
+                if key in included:
+                    attrs = included[key]["attributes"]
+                    candidates.append({
+                        "id": cid,
+                        "first_name": attrs.get("first-name", ""),
+                        "last_name":  attrs.get("last-name", ""),
+                        "phone":      attrs.get("phone", ""),
+                        "email":      attrs.get("email", ""),
+                    })
+            except (KeyError, TypeError):
+                pass
+        if not body.get("links", {}).get("next"):
+            break
+        page += 1
+    return candidates
+
+
 async def get_stages() -> list[dict]:
     """Повертає всі етапи з TeamTailor."""
     url = f"{TT_BASE_URL}/stages"

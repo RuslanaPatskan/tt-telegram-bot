@@ -139,6 +139,35 @@ async def candidates_from_applications(
         return {"candidates": [], "error": str(e)}
 
 
+class StageRequest(BaseModel):
+    job_id: str
+    stage_ids: list[str]
+
+
+@app.post("/api/candidates-from-stage")
+async def candidates_from_stage(
+    body: StageRequest,
+    x_secret: Annotated[str | None, Header()] = None,
+):
+    """Повертає всіх кандидатів для вибраних колонок kanban (через API, без virtual scrolling)."""
+    verify_secret(x_secret)
+    try:
+        import asyncio
+        results = await asyncio.gather(
+            *[teamtailor.get_job_applications_for_stage(body.job_id, sid) for sid in body.stage_ids]
+        )
+        seen = set()
+        candidates = []
+        for group in results:
+            for c in group:
+                if c["id"] not in seen:
+                    seen.add(c["id"])
+                    candidates.append(c)
+        return {"candidates": candidates}
+    except Exception as e:
+        return {"candidates": [], "error": str(e)}
+
+
 @app.post("/api/candidates")
 async def get_candidates(
     body: CheckRequest,

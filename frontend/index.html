@@ -494,11 +494,13 @@ function setHint(t) { document.getElementById('hint-text').textContent = t; }
 // ── Load candidates ───────────────────────────────────────────────────────────
 
 async function loadCandidatesFromUrl() {
-  const params = new URLSearchParams(window.location.search);
-  const ids     = (params.get('ids')      || '').split(',').filter(Boolean);
-  const jobIds  = (params.get('job_ids')  || '').split(',').filter(Boolean);
+  const params    = new URLSearchParams(window.location.search);
+  const ids       = (params.get('ids')       || '').split(',').filter(Boolean);
+  const jobIds    = (params.get('job_ids')   || '').split(',').filter(Boolean);
+  const stageIds  = (params.get('stage_ids') || '').split(',').filter(Boolean);
+  const jobId     = params.get('job_id') || '';
 
-  if (!ids.length && !jobIds.length) {
+  if (!ids.length && !jobIds.length && !stageIds.length) {
     setHint('Немає candidate_ids в URL. Додай ?ids=c1,c2,c3 для тесту.');
     loadDemo();
     return;
@@ -506,21 +508,50 @@ async function loadCandidatesFromUrl() {
 
   setHint('Завантажуємо кандидатів…');
   try {
-    let endpoint, payload;
+    let allCandidates = [];
+
+    // Individual job-application IDs (visible cards from kanban)
     if (jobIds.length) {
-      endpoint = '/api/candidates-from-applications';
-      payload  = { candidate_ids: jobIds };
-    } else {
-      endpoint = '/api/candidates';
-      payload  = { candidate_ids: ids };
+      const r = await fetch(apiUrl('/api/candidates-from-applications'), {
+        method: 'POST',
+        headers: apiHeaders(),
+        body: JSON.stringify({ candidate_ids: jobIds }),
+      });
+      const data = await r.json();
+      allCandidates.push(...(data.candidates || []));
     }
-    const r = await fetch(apiUrl(endpoint), {
-      method: 'POST',
-      headers: apiHeaders(),
-      body: JSON.stringify(payload),
+
+    // Whole columns selected (virtual scroll — use stage API)
+    if (stageIds.length && jobId) {
+      const r = await fetch(apiUrl('/api/candidates-from-stage'), {
+        method: 'POST',
+        headers: apiHeaders(),
+        body: JSON.stringify({ job_id: jobId, stage_ids: stageIds }),
+      });
+      const data = await r.json();
+      allCandidates.push(...(data.candidates || []));
+    }
+
+    // List view — direct candidate IDs
+    if (ids.length) {
+      const r = await fetch(apiUrl('/api/candidates'), {
+        method: 'POST',
+        headers: apiHeaders(),
+        body: JSON.stringify({ candidate_ids: ids }),
+      });
+      const data = await r.json();
+      allCandidates.push(...(data.candidates || []));
+    }
+
+    // Deduplicate by candidate id
+    const seen = new Set();
+    const unique = allCandidates.filter(c => {
+      if (seen.has(c.id)) return false;
+      seen.add(c.id);
+      return true;
     });
-    const data = await r.json();
-    initCandidates(data.candidates);
+
+    initCandidates(unique);
   } catch (e) {
     setHint(`Помилка: ${e.message}`);
   }
