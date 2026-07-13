@@ -495,21 +495,29 @@ function setHint(t) { document.getElementById('hint-text').textContent = t; }
 
 async function loadCandidatesFromUrl() {
   const params = new URLSearchParams(window.location.search);
-  const ids = (params.get('ids') || '').split(',').filter(Boolean);
+  const ids     = (params.get('ids')      || '').split(',').filter(Boolean);
+  const jobIds  = (params.get('job_ids')  || '').split(',').filter(Boolean);
 
-  if (!ids.length) {
+  if (!ids.length && !jobIds.length) {
     setHint('Немає candidate_ids в URL. Додай ?ids=c1,c2,c3 для тесту.');
-    // Demo mode — завантажуємо тестові дані
     loadDemo();
     return;
   }
 
   setHint('Завантажуємо кандидатів…');
   try {
-    const r = await fetch(apiUrl('/api/candidates'), {
+    let endpoint, payload;
+    if (jobIds.length) {
+      endpoint = '/api/candidates-from-applications';
+      payload  = { candidate_ids: jobIds };
+    } else {
+      endpoint = '/api/candidates';
+      payload  = { candidate_ids: ids };
+    }
+    const r = await fetch(apiUrl(endpoint), {
       method: 'POST',
       headers: apiHeaders(),
-      body: JSON.stringify({ candidate_ids: ids }),
+      body: JSON.stringify(payload),
     });
     const data = await r.json();
     initCandidates(data.candidates);

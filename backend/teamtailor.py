@@ -64,6 +64,28 @@ def build_note_text(message_text: str, channel: str = "Telegram") -> str:
     return f"📨 Надіслано повідомлення в {channel}: «{message_text}» · {ts}"
 
 
+async def get_candidate_from_job_application(job_app_id: str) -> dict | None:
+    """Повертає candidate dict за ID job-application."""
+    url = f"{TT_BASE_URL}/job-applications/{job_app_id}"
+    async with httpx.AsyncClient(timeout=10) as client:
+        r = await client.get(url, headers=_headers())
+        if r.status_code != 200:
+            return None
+        data = r.json()["data"]
+        candidate_id = data["relationships"]["candidate"]["data"]["id"]
+        return await get_candidate(candidate_id)
+
+
+async def get_candidates_from_job_applications(job_app_ids: list[str]) -> list[dict]:
+    """Резолвить job-application IDs у список кандидатів."""
+    import asyncio
+    results = await asyncio.gather(
+        *[get_candidate_from_job_application(jid) for jid in job_app_ids],
+        return_exceptions=False,
+    )
+    return [r for r in results if r is not None]
+
+
 async def get_stages() -> list[dict]:
     """Повертає всі етапи з TeamTailor."""
     url = f"{TT_BASE_URL}/stages"

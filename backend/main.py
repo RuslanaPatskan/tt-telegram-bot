@@ -114,6 +114,17 @@ async def debug_tt(candidate_id: str):
     return {"status": r.status_code, "body": r.text[:1000]}
 
 
+@app.post("/api/candidates-from-applications")
+async def candidates_from_applications(
+    body: CheckRequest,
+    x_secret: Annotated[str | None, Header()] = None,
+):
+    """Резолвить job-application IDs (kanban) у кандидатів."""
+    verify_secret(x_secret)
+    candidates = await teamtailor.get_candidates_from_job_applications(body.candidate_ids)
+    return {"candidates": candidates}
+
+
 @app.post("/api/candidates")
 async def get_candidates(
     body: CheckRequest,
