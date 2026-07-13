@@ -65,15 +65,19 @@ def build_note_text(message_text: str, channel: str = "Telegram") -> str:
 
 
 async def get_candidate_from_job_application(job_app_id: str) -> dict | None:
-    """Повертає candidate dict за ID job-application."""
+    """Повертає candidate dict за ID job-application (або candidate ID як fallback)."""
     url = f"{TT_BASE_URL}/job-applications/{job_app_id}"
     async with httpx.AsyncClient(timeout=10) as client:
         r = await client.get(url, headers=_headers())
-        if r.status_code != 200:
-            return None
-        data = r.json()["data"]
-        candidate_id = data["relationships"]["candidate"]["data"]["id"]
-        return await get_candidate(candidate_id)
+    if r.status_code == 200:
+        try:
+            data = r.json()["data"]
+            candidate_id = data["relationships"]["candidate"]["data"]["id"]
+            return await get_candidate(candidate_id)
+        except (KeyError, TypeError):
+            pass
+    # Fallback: спробувати як candidate ID напряму
+    return await get_candidate(job_app_id)
 
 
 async def get_candidates_from_job_applications(job_app_ids: list[str]) -> list[dict]:
