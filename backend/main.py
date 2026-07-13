@@ -99,6 +99,17 @@ async def debug_tg():
         return {"ok": False, "error": str(e), "type": type(e).__name__}
 
 
+@app.get("/api/debug/job-app/{jid}")
+async def debug_job_app(jid: str):
+    import httpx
+    from backend.config import TT_API_KEY, TT_BASE_URL, TT_API_VERSION
+    headers = {"Authorization": f"Token token={TT_API_KEY}", "X-Api-Version": TT_API_VERSION, "Content-Type": "application/vnd.api+json"}
+    async with httpx.AsyncClient(timeout=10) as client:
+        r1 = await client.get(f"{TT_BASE_URL}/job-applications/{jid}", headers=headers)
+        r2 = await client.get(f"{TT_BASE_URL}/candidates/{jid}", headers=headers)
+    return {"job_app": {"status": r1.status_code, "body": r1.text[:300]}, "candidate": {"status": r2.status_code, "body": r2.text[:300]}}
+
+
 @app.get("/api/debug/tt/{candidate_id}")
 async def debug_tt(candidate_id: str):
     """Діагностика TT API — показує сирий статус і відповідь."""
