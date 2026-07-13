@@ -65,19 +65,30 @@ def build_note_text(message_text: str, channel: str = "Telegram") -> str:
 
 
 async def get_candidate_from_job_application(job_app_id: str) -> dict | None:
-    """Повертає candidate dict за ID job-application (або candidate ID як fallback)."""
+    """Повертає candidate dict за ID job-application."""
     url = f"{TT_BASE_URL}/job-applications/{job_app_id}"
     async with httpx.AsyncClient(timeout=10) as client:
-        r = await client.get(url, headers=_headers())
-    if r.status_code == 200:
-        try:
-            data = r.json()["data"]
-            candidate_id = data["relationships"]["candidate"]["data"]["id"]
-            return await get_candidate(candidate_id)
-        except (KeyError, TypeError):
-            pass
-    # Fallback: спробувати як candidate ID напряму
-    return await get_candidate(job_app_id)
+        r = await client.get(url, headers=_headers(), params={"include": "candidate"})
+    if r.status_code != 200:
+        return None
+    try:
+        body = r.json()
+        candidate_id = body["data"]["relationships"]["candidate"]["data"]["id"]
+        # Дані кандидата вже в included — не робимо зайвий запит
+        for item in body.get("included", []):
+            if item.get("type") == "candidates" and item.get("id") == candidate_id:
+                attrs = item["attributes"]
+                return {
+                    "id": candidate_id,
+                    "first_name": attrs.get("first-name", ""),
+                    "last_name":  attrs.get("last-name", ""),
+                    "phone":      attrs.get("phone", ""),
+                    "email":      attrs.get("email", ""),
+                }
+        # Fallback: окремий запит
+        return await get_candidate(candidate_id)
+    except (KeyError, TypeError):
+        return None
 
 
 async def get_candidates_from_job_applications(job_app_ids: list[str]) -> list[dict]:
