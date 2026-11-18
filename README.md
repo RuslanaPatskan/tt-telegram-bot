@@ -64,6 +64,20 @@ uvicorn backend.main:app --reload
 4. Завантаж `session/userbot.session` через Railway Volume або base64 env var
 5. Deploy — Railway сам підхопить Procfile
 
+### 6а. Безкоштовний деплой на Render
+
+Render не має постійного диска на безкоштовному тарифі, тому сесія Telegram передається рядком, а не файлом.
+
+1. Локально отримай рядок сесії:
+   ```bash
+   python gen_session_string.py
+   ```
+2. На render.com: **New → Blueprint** → вибери цей репозиторій (конфіг у `render.yaml`)
+3. Заповни змінні середовища: `TG_API_ID`, `TG_API_HASH`, `TG_PHONE`, `TG_SESSION_STRING`, `TT_API_KEY`, `APP_SECRET`
+4. Після деплою панель буде за адресою `https://<назва>.onrender.com/app`
+
+Безкоштовний сервіс «засинає» після ~15 хв без запитів — перший запит після паузи завантажується довше. Статус розсилки зберігається в пам'яті, тому після перезапуску сервісу він скидається.
+
 ## API Endpoints
 
 | Method | Path | Опис |
