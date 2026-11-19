@@ -3,15 +3,18 @@ import random
 from telethon import TelegramClient
 from telethon.sessions import StringSession
 from telethon.tl.functions.contacts import ImportContactsRequest
-from telethon.tl.types import InputPhoneContact
+from telethon.tl.types import InputPhoneContact, User
 from telethon.errors import (
     FloodWaitError,
+    UsernameNotOccupiedError,
+    UsernameInvalidError,
     PhoneNumberInvalidError,
     InputUserDeactivatedError,
     UserNotMutualContactError,
     PeerFloodError,
 )
 from backend.config import TG_API_ID, TG_API_HASH, SESSION_PATH, TG_SESSION_STRING
+from backend import teamtailor
 
 # Глобальний клієнт — ініціалізується один раз при старті
 _client: TelegramClient | None = None
@@ -54,6 +57,45 @@ async def check_telegram(phone: str, first_name: str, last_name: str = "") -> tu
     return True, result.users[0]
 
 
+async def resolve_username(username: str):
+    """Знаходить користувача Telegram за ніком (без імпорту контакту). None якщо немає."""
+    client = await get_client()
+    try:
+        entity = await client.get_entity(username)
+    except (UsernameNotOccupiedError, UsernameInvalidError, ValueError):
+        return None
+    if isinstance(entity, User) and not entity.bot:
+        return entity
+    return None
+
+
+async def find_user(candidate: dict) -> tuple[object | None, str | None]:
+    """
+    Шукає кандидата в Telegram: спочатку за телефоном, якщо не знайдено
+    (або телефону немає) — за ніком з кастомного поля Teamtailor.
+    Повертає (user, "phone" | "username") або (None, None).
+    """
+    phone = candidate.get("phone") or ""
+    username = candidate.get("tg_username") or ""
+
+    if phone:
+        found, user = await check_telegram(
+            phone, candidate.get("first_name", ""), candidate.get("last_name", "")
+        )
+        if found:
+            return user, "phone"
+        # За телефоном не знайшли — пробуємо нік, якщо він є в картці
+        username = username or await teamtailor.get_candidate_tg_username(candidate["id"])
+
+    if username:
+        await asyncio.sleep(random.uniform(1.0, 2.0))
+        user = await resolve_username(username)
+        if user:
+            return user, "username"
+
+    return None, None
+
+
 async def send_message(phone_or_user, text: str) -> dict:
     """
     Надсилає повідомлення. Приймає user-об'єкт або рядок з номером.
@@ -91,26 +133,26 @@ async def check_and_send(candidate: dict, text: str) -> dict:
     2. Надсилання (якщо є)
     Повертає результат із усіма деталями.
     """
-    phone = candidate["phone"]
-    first = candidate["first_name"]
+    phone = candidate.get("phone") or ""
+    username = candidate.get("tg_username") or ""
 
-    if not phone:
+    if not phone and not username:
         return {
             "candidate_id": candidate["id"],
             "status": "skipped",
-            "reason": "Немає номера телефону",
+            "reason": "Немає номера телефону і Telegram-ніка",
         }
 
     # Затримка перед перевіркою (щоб не тригерити антиспам)
     await asyncio.sleep(random.uniform(1.5, 3.0))
 
-    found, tg_user = await check_telegram(phone, first, candidate.get("last_name", ""))
+    tg_user, via = await find_user(candidate)
 
-    if not found:
+    if tg_user is None:
         return {
             "candidate_id": candidate["id"],
             "status": "not_in_telegram",
-            "reason": "Номер не зареєстрований у Telegram",
+            "reason": "Не знайдено в Telegram за телефоном або ніком",
         }
 
     # Затримка перед відправкою
@@ -123,4 +165,5 @@ async def check_and_send(candidate: dict, text: str) -> dict:
         "status": "sent" if result["ok"] else "failed",
         "reason": result.get("reason"),
         "tg_username": getattr(tg_user, "username", None),
+        "found_by": via,
     }

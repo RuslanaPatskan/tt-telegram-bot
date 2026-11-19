@@ -1,5 +1,7 @@
+import asyncio
+import re
 import httpx
-from backend.config import TT_API_KEY, TT_BASE_URL, TT_API_VERSION
+from backend.config import TT_API_KEY, TT_BASE_URL, TT_API_VERSION, TT_TG_FIELD_ID
 from typing import Optional
 import datetime
 
@@ -30,6 +32,71 @@ async def get_candidate(candidate_id: str) -> Optional[dict]:
         }
 
 
+# ── Telegram-нік з кастомного поля ─────────────────────────────────────────
+
+_USERNAME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]{4,31}$")
+
+
+def normalize_tg_username(raw: str) -> str:
+    """'@nick', 't.me/nick', 'https://t.me/nick/' → 'nick'. Невалідне → ''."""
+    v = (raw or "").strip()
+    v = re.sub(r"^https?://", "", v, flags=re.I)
+    v = re.sub(r"^(www\.)?(t\.me|telegram\.me)/", "", v, flags=re.I)
+    v = v.lstrip("@").split("?")[0].strip("/")
+    return v if _USERNAME_RE.match(v) else ""
+
+
+async def get_candidate_tg_username(candidate_id: str) -> str:
+    """Telegram-нік кандидата з кастомного поля Teamtailor або ''."""
+    url = f"{TT_BASE_URL}/candidates/{candidate_id}/custom-field-values"
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            r = await client.get(
+                url, headers=_headers(),
+                params={"include": "custom-field", "page[size]": 30},
+            )
+        if r.status_code != 200:
+            return ""
+        body = r.json()
+    except Exception:
+        return ""
+
+    fields = {
+        f["id"]: f.get("attributes", {})
+        for f in body.get("included", [])
+        if f.get("type") == "custom-fields"
+    }
+    for cfv in body.get("data", []):
+        rel = (cfv.get("relationships", {}).get("custom-field", {}).get("data") or {})
+        cf_id = rel.get("id")
+        attrs = fields.get(cf_id, {})
+        is_tg = (
+            (attrs.get("api-name") or "").lower() == "telegram"
+            or (attrs.get("name") or "").lower() == "telegram"
+            or (TT_TG_FIELD_ID and cf_id == TT_TG_FIELD_ID)
+        )
+        if is_tg:
+            username = normalize_tg_username(cfv.get("attributes", {}).get("value") or "")
+            if username:
+                return username
+    return ""
+
+
+async def add_tg_usernames(candidates: list[dict]) -> list[dict]:
+    """Додає поле tg_username тим, у кого немає телефону."""
+    sem = asyncio.Semaphore(5)
+
+    async def one(c: dict):
+        c["tg_username"] = ""
+        if c.get("phone"):
+            return
+        async with sem:
+            c["tg_username"] = await get_candidate_tg_username(c["id"])
+
+    await asyncio.gather(*[one(c) for c in candidates])
+    return candidates
+
+
 async def get_candidates_batch(candidate_ids: list[str]) -> list[dict]:
     """Запитує всіх кандидатів паралельно, пропускає не знайдених."""
     import asyncio
@@ -37,7 +104,7 @@ async def get_candidates_batch(candidate_ids: list[str]) -> list[dict]:
         *[get_candidate(cid) for cid in candidate_ids],
         return_exceptions=False,
     )
-    return [r for r in results if r is not None]
+    return await add_tg_usernames([r for r in results if r is not None])
 
 
 async def post_note(candidate_id: str, body: str) -> bool:
@@ -98,7 +165,7 @@ async def get_candidates_from_job_applications(job_app_ids: list[str]) -> list[d
         *[get_candidate_from_job_application(jid) for jid in job_app_ids],
         return_exceptions=False,
     )
-    return [r for r in results if r is not None]
+    return await add_tg_usernames([r for r in results if r is not None])
 
 
 async def get_job_applications_for_stage(job_id: str, stage_id: str) -> list[dict]:
@@ -138,7 +205,7 @@ async def get_job_applications_for_stage(job_id: str, stage_id: str) -> list[dic
         if not body.get("links", {}).get("next"):
             break
         page += 1
-    return candidates
+    return await add_tg_usernames(candidates)
 
 
 async def get_stages() -> list[dict]:

@@ -402,7 +402,7 @@ function tgBadge(s) {
     checking:  `<span class="badge b-checking"><span class="dot d-amber"></span>Перевірка…</span>`,
     found:     `<span class="badge b-found"><span class="dot d-green"></span>Є в Telegram</span>`,
     not_found: `<span class="badge b-notfound"><span class="dot d-red"></span>Немає в Telegram</span>`,
-    no_phone:  `<span class="badge b-nophone">Немає телефону</span>`,
+    no_phone:  `<span class="badge b-nophone">Немає телефону й ніка</span>`,
   };
   return m[s] || '—';
 }
@@ -434,7 +434,7 @@ function render() {
             <span class="name-text">${c.first_name} ${c.last_name}</span>
           </div>
         </td>
-        <td class="phone-cell">${c.phone || '—'}</td>
+        <td class="phone-cell">${c.phone || (c.tg_username ? '@' + c.tg_username : '—')}</td>
         <td>${tgBadge(tg)}</td>
         <td>${sendBadge(send)}</td>
       </tr>`;

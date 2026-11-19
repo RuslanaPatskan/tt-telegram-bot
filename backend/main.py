@@ -189,21 +189,25 @@ async def check_telegram(
 ):
     """
     Перевіряє наявність кандидатів у Telegram (без відправки).
-    Повертає список із полем tg_status: found | not_found | no_phone.
+    Повертає список із полем tg_status: found | not_found | no_phone
+    (no_phone — немає ні телефону, ні Telegram-ніка) і tg_via: phone | username.
     """
     verify_secret(x_secret)
     candidates = await teamtailor.get_candidates_batch(body.candidate_ids)
 
     results = []
     for c in candidates:
-        phone = c.get("phone", "")
-        if not phone:
+        if not c.get("phone") and not c.get("tg_username"):
             results.append({**c, "tg_status": "no_phone"})
             continue
 
         await asyncio.sleep(1.5)  # пауза між перевірками
-        found, _ = await telegram_client.check_telegram(phone, c["first_name"], c.get("last_name", ""))
-        results.append({**c, "tg_status": "found" if found else "not_found"})
+        user, via = await telegram_client.find_user(c)
+        results.append({
+            **c,
+            "tg_status": "found" if user else "not_found",
+            "tg_via": via,
+        })
 
     return {"results": results}
 

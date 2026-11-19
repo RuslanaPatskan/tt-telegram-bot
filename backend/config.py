@@ -8,6 +8,9 @@ TG_API_HASH = os.environ["TG_API_HASH"]
 TG_PHONE    = os.environ["TG_PHONE"]
 
 TT_API_KEY  = os.environ["TT_API_KEY"]
+# Необов'язково: ID кастомного поля Teamtailor з Telegram-ніком.
+# Якщо не задано — шукаємо поле з назвою або api-name "telegram".
+TT_TG_FIELD_ID = os.environ.get("TT_TG_FIELD_ID", "")
 APP_SECRET  = os.environ.get("APP_SECRET", "")
 
 TT_BASE_URL    = "https://api.teamtailor.com/v1"
